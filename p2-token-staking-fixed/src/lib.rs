@@ -16,10 +16,8 @@ pub mod interfaces;
 pub mod util;
 pub mod vault;
 
-use crate::errors::*;
 use crate::interfaces::*;
-use crate::vault::*;
-use crate::{constants::*, util::*};
+use crate::{constants::*, errors::*, util::*, vault::*};
 
 near_sdk::setup_alloc!();
 
@@ -29,13 +27,14 @@ pub struct Contract {
     pub owner_id: AccountId,
     /// farm token
     pub cheddar_id: AccountId,
+    /// staked token
+    pub token_id: AccountId,
     // if farming is opened
     pub is_active: bool,
     //user vaults
     pub vaults: LookupMap<AccountId, Vault>,
-    /// amount of $CHEDDAR farmed during each round per one NEAR staked. Round duration is
-    /// defined in constants.rs. Farmed $CHEDDAR are distributed to all users proportionally to
-    /// their NEAR stake.
+    /// amount of $CHEDDAR farmed each per each round. Round is defined in constants.rs
+    /// Farmed $CHEDDAR are distributed to all users proportionally to their NEAR stake.
     pub rate: u128, //cheddar per round per near (round = 1 second)
     pub total_stake: u128,
     /// round number when the farming starts
@@ -56,6 +55,7 @@ impl Contract {
     pub fn new(
         owner_id: ValidAccountId,
         cheddar_id: ValidAccountId,
+        token_id: ValidAccountId,
         reward_rate: U128,
         farming_start: u64,
         farming_end: u64,
@@ -63,6 +63,7 @@ impl Contract {
         Self {
             owner_id: owner_id.into(),
             cheddar_id: cheddar_id.into(),
+            token_id: token_id.into(),
             is_active: true,
             vaults: LookupMap::new(b"v".to_vec()),
             rate: reward_rate.0, //cheddar per round per near (round = 1 second)
@@ -87,7 +88,8 @@ impl Contract {
     pub fn get_contract_params(&self) -> ContractParams {
         ContractParams {
             owner_id: self.owner_id.clone(),
-            token_contract: self.cheddar_id.clone(),
+            farming_token: self.cheddar_id.clone(),
+            staked_token: self.token_id.clone(),
             rewards_per_day: (self.rate * 60 * 60 * 24).into(),
             is_open: self.is_active,
             farming_start: round_to_unix(self.farming_start),
@@ -119,7 +121,7 @@ impl Contract {
     pub fn stake(&mut self) -> U128 {
         self.assert_open();
         let amount = env::attached_deposit();
-        assert!(amount >= MIN_STAKE, "{}", ERR01_MIN_STAKE);
+        assert!(amount >= MIN_BALANCE, "{}", ERR01_MIN_STAKE);
         let aid = env::predecessor_account_id();
         self.total_stake += amount;
         match self.vaults.get(&aid) {
@@ -136,6 +138,8 @@ impl Contract {
                         previous: cmp::max(current_round(), self.farming_start),
                         staked: amount,
                         rewards: 0,
+                        tokens: 0,
+                        ynear: amount,
                     },
                 );
                 return amount.into();
@@ -153,10 +157,10 @@ impl Contract {
         let amount = u128::from(amount);
         let (aid, mut vault) = self.get_vault();
         assert!(
-            amount <= vault.staked + MIN_STAKE,
+            amount <= vault.staked + MIN_BALANCE,
             "Invalid amount, you have not that much staked"
         );
-        if vault.staked >= MIN_STAKE && amount >= vault.staked - MIN_STAKE {
+        if vault.staked >= MIN_BALANCE && amount >= vault.staked - MIN_BALANCE {
             //unstake all => close -- simplify UI
             return self.close();
         }
@@ -264,13 +268,13 @@ impl Contract {
             amount,
             close,
             &env::current_account_id(),
-            NO_DEPOSIT,
+            0,
             GAS_FOR_MINT_CALLBACK,
         ))
         .then(ext_self::mint_callback_finally(
             a.clone(),
             &env::current_account_id(),
-            NO_DEPOSIT,
+            0,
             GAS_FOR_MINT_CALLBACK_FINALLY,
         ))
     }
@@ -337,16 +341,6 @@ impl Contract {
     }
 }
 
-#[macro_export]
-macro_rules! env_log {
-    ($($arg:tt)*) => {{
-        let msg = format!($($arg)*);
-        // io::_print(msg);
-        println!("{}", msg);
-        env::log(msg.as_bytes())
-    }}
-}
-
 #[cfg(all(test, not(target_arch = "wasm32")))]
 #[allow(unused_imports)]
 mod tests {
@@ -368,6 +362,7 @@ mod tests {
         let contract = Contract::new(
             accounts(0),
             "cheddar".to_string().try_into().unwrap(),
+            b"atom".try_into().unwrap(),
             120.into(),
             10,
             20,
@@ -399,7 +394,7 @@ mod tests {
     #[should_panic(expected = "E01: min stake amount is 0.01 NEAR")]
     fn test_min_staking() {
         let (mut ctx, mut ctr) = setup_contract(1, 0, 1);
-        testing_env!(ctx.attached_deposit(MIN_STAKE / 10).build());
+        testing_env!(ctx.attached_deposit(MIN_BALANCE / 10).build());
         ctr.stake();
     }
 
