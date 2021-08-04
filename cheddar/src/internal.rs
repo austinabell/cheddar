@@ -1,4 +1,4 @@
-use near_sdk::json_types::{ValidAccountId, U128};
+use near_sdk::json_types::U128;
 use near_sdk::{AccountId, Balance, PromiseResult};
 
 use crate::*;
@@ -11,7 +11,7 @@ impl Contract {
         );
     }
 
-    pub(crate) fn assert_minter(&self, account_id: String) {
+    pub(crate) fn assert_minter(&self, account_id: AccountId) {
         assert!(self.minters.contains(&account_id), "not a minter");
     }
 
@@ -126,7 +126,7 @@ impl Contract {
     pub(crate) fn ft_resolve_transfer_adjust(
         &mut self,
         sender_id: &AccountId,
-        receiver_id: ValidAccountId,
+        receiver_id: AccountId,
         amount: U128,
     ) -> (u128, u128) {
         let receiver_id: AccountId = receiver_id.into();

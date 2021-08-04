@@ -1,5 +1,5 @@
-use near_sdk::{env, near_bindgen};
-use near_sdk::json_types::{ValidAccountId, U128};
+use near_sdk::{env, near_bindgen, AccountId};
+use near_sdk::json_types::{U128};
 use near_contract_standards::storage_management::{StorageBalance, StorageBalanceBounds};
 
 use crate::*;
@@ -19,7 +19,7 @@ impl Contract {
     #[allow(unused_variables)]
     pub fn storage_deposit(
         &mut self,
-        account_id: Option<ValidAccountId>,
+        account_id: Option<AccountId>,
         registration_only: Option<bool>,
     ) -> StorageBalance {
         EMPTY_STORAGE_BALANCE
@@ -51,7 +51,7 @@ impl Contract {
     }
 
     #[allow(unused_variables)]
-    pub fn storage_balance_of(&self, account_id: ValidAccountId) -> Option<StorageBalance> {
+    pub fn storage_balance_of(&self, account_id: AccountId) -> Option<StorageBalance> {
         Some(EMPTY_STORAGE_BALANCE)
     }
 }
